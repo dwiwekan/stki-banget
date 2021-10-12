@@ -12,7 +12,7 @@ from enum import unique
 from operator import index
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtWidgets import QFileDialog, QMessageBox, QAction, QMainWindow, QSlider, QPushButton, QToolTip, QApplication
+from PyQt5.QtWidgets import QFileDialog, QMessageBox, QAction, QMainWindow, QSlider, QPushButton, QToolTip, QApplication, QTableWidgetItem
 
 import os
 import nltk # Library nltk
@@ -38,11 +38,14 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.tokenize import word_tokenize
 
-# ======== StopWord ========
+# ======== StopWord & Stemmer ========
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from Sastrawi.Dictionary.ArrayDictionary import ArrayDictionary
 from Sastrawi.StopWordRemover.StopWordRemover import StopWordRemover
 from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
+
+# ========= Boolean ===========
+from contextlib import redirect_stdout
 
 
 class Ui_MainWindow(object):
@@ -255,6 +258,10 @@ class Ui_MainWindow(object):
 
         #Deklarasi
         self.savefile = []
+        self.filename = []
+        self.token_word = []
+        self.stopWord_word = []
+        self.stemming_word = []
         self.counter = 1
         self.increase = 0
 
@@ -262,6 +269,7 @@ class Ui_MainWindow(object):
         self.pushButton.clicked.connect(self.addFile)
         self.pushButton_2.clicked.connect(self.resetFile)
         self.pushButton_3.clicked.connect(self.preprocessingFile)
+        self.pushButton_4.clicked.connect(self.booleanModel)
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
@@ -270,7 +278,7 @@ class Ui_MainWindow(object):
         self.pushButton.setText(_translate("MainWindow", "Open FIle"))
         self.pushButton_2.setText(_translate("MainWindow", "Restart File"))
         self.pushButton_3.setText(_translate("MainWindow", "Preprocessing File"))
-        self.label_2.setText(_translate("MainWindow", "Inverted Matrix"))
+        self.label_2.setText(_translate("MainWindow", "Inverted Index"))
         self.label_3.setText(_translate("MainWindow", "Incidence Matrix"))
         self.pushButton_4.setText(_translate("MainWindow", "Boolean Model"))
         self.pushButton_5.setText(_translate("MainWindow", "TF-IDF"))
@@ -281,7 +289,18 @@ class Ui_MainWindow(object):
         self.filePathName = os.path.basename(self.fileName)
         self.split = os.path.splitext(self.filePathName)[0]
         self.savefile.append(self.fileName)
+        self.filename.append(self.split)
         self.listWidget.addItem(self.fileName)
+
+        self.casefoldingWord(self.fileName)
+        self.processingFile()
+        self.stopWord_word.extend(self.tokeStop)
+
+        self.stemming_word.extend(self.tokenStem)
+        self.stemming_word = list(dict.fromkeys(self.stemming_word))
+
+        self.invertedIndex()
+        self.printIncidence()
 
         self.counter += 1
         self.increase += 1
@@ -289,7 +308,13 @@ class Ui_MainWindow(object):
     def resetFile(self):
         self.counter = 1
         self.increase = 0
+        self.stopWord_word.clear()
+        self.stemming_word.clear()
+
         self.listWidget.clear()
+        self.listWidget_2.clear()
+        self.listWidget_3.clear()
+        self.listWidget_4.clear()
         self.savefile.clear()
 
     def getFileNameOnly(self,filenameonly):
@@ -300,7 +325,6 @@ class Ui_MainWindow(object):
     def casefoldingWord(self,fileName):
        
         self.kalimatOpen = open(fileName,'r').read()
-        self.listWidget_2.addItem('- Kalimat Text :{}'.format(self.kalimatOpen))
         self.tokenize = self.kalimatOpen.lower()
         # Menghapus angka
         self.angka = re.sub(r"\d+", "", self.tokenize)
@@ -310,7 +334,6 @@ class Ui_MainWindow(object):
         self.whitespace = self.tandabaca.strip()
         # Menghapus beberapa whitespace menjadi whitespace tunggal
         self.whitespacetunggal = re.sub('\s+',' ',self.whitespace)
-        
 
     def processingFile(self):
         # Case Folding -> Tokenizing -> Filtering (Stopword) -> Stemming
@@ -318,16 +341,19 @@ class Ui_MainWindow(object):
         self.jadi = nltk.tokenize.word_tokenize(self.whitespacetunggal)
         self.frekuensi_tokens = nltk.FreqDist(self.jadi).most_common()
 
+
         #Filtering (StopWord)
         factory = StopWordRemoverFactory()
         stopword = factory.create_stop_word_remover()
-        self.stop = stopword.remove(self.whitespacetunggal)    
+        self.stop = stopword.remove(self.whitespacetunggal)   
+        self.tokeStop = nltk.tokenize.word_tokenize(self.stop)
 
         # Stemming
         factory = StemmerFactory()
-        stemmer = factory.create_stemmer()
-        self.stemming   = stemmer.stem(self.stop)
-        #self.kalimatOpen = nltk.tokenize.word_tokenize(self.stop)
+        self.stemmer = factory.create_stemmer()
+        self.stemming   = self.stemmer.stem(self.stop)
+        self.tokenStem = nltk.tokenize.word_tokenize(self.stemming)
+        # self.kalimatOpen = nltk.tokenize.word_tokenize(self.stop)
   
     def preprocessingFile(self):
         self.listWidget_2.clear()
@@ -340,7 +366,7 @@ class Ui_MainWindow(object):
         self.processingFile()
         
         #Add listWidget
-        self.listWidget_2.addItem('1. Tokenize {}'.format(self.kalimatOpen))
+        self.listWidget_2.addItem('1. Kalimat Text {}'.format(self.kalimatOpen))
         self.listWidget_2.addItem('2. Case Folding {}'.format(self.whitespacetunggal))
         self.listWidget_2.addItem('3. Token Kata {}'.format(self.jadi))
         self.listWidget_2.addItem('4. Frekuensi Kata {}'.format(self.frekuensi_tokens))
@@ -351,6 +377,250 @@ class Ui_MainWindow(object):
 
         # self.counter += 1
         # self.increase += 1
+
+    def invertedIndex(self):
+        self.listWidget_4.clear()
+
+        for item in range(len(self.stemming_word)):
+            exist_file = list()
+            for data in self.savefile:
+                with open(data, 'r') as namaFile:
+                    for isi in namaFile:
+                        isi = isi.lower()
+                        if self.stemming_word[item] in isi:
+                            exist_file.append(os.path.basename(data))
+                            exist_file = list(dict.fromkeys(exist_file))
+                            
+            self.listWidget_4.addItem('{}\t: <{}>'.format(self.stemming_word[item], exist_file))
+
+    def printIncidence(self):
+
+        self.items_clear()
+
+        panjang_col = len(self.savefile)
+        panjang_row = len(self.stemming_word)
+
+        self.tableWidget.setColumnCount(panjang_col)
+        self.tableWidget.setRowCount(panjang_row)
+
+        self.tableWidget.setHorizontalHeaderLabels(self.filename)
+        self.tableWidget.setVerticalHeaderLabels(self.stemming_word)
+
+        for x in range(len(self.stemming_word)):
+            for y in range(len(self.filename)):
+                with open(self.savefile[y], 'r') as openFile:
+                    for content in openFile:
+                        if self.stemming_word[x] in content.lower():
+                            self.tableWidget.setItem(x, y, QTableWidgetItem('1'))
+                        else:
+                            self.tableWidget.setItem(x, y, QTableWidgetItem('0'))         
+
+    def items_clear(self):
+        for item in self.tableWidget.selectedItems():
+            newitem = QTableWidgetItem()
+            self.tableWidget.setItem(item.row(), item.column(), newitem)
+    
+
+    # =========== BOOLEAN =========== #
+    def filter(self, documents, rows, cols):
+        '''function to read and separate the name of the documents and the terms
+        present in it to a separate list  from the data frame and also create a
+        dictionary which has the name of the document as key and the terms present in
+        it as the list of strings  which is the value of the key'''
+ 
+        for i in range(rows):
+            for j in range(cols):
+            # traversal through the data frame
+                if(j == 0):
+                # first column has the name of the document in the csv file
+                    self.keys.append(documents.loc[i].iat[j])
+                else:
+                    self.dummy_List.append(documents.loc[i].iat[j])
+                    # dummy list to update the terms in the dictionary
+                    if documents.loc[i].iat[j] not in self.terms:
+                        # add the terms to the list if it is not present else continue
+                        self.terms.append(documents.loc[i].iat[j])
+            copy = self.dummy_List.copy()
+            # copying the the dummy list to a different list
+            self.dicti.update({documents.loc[i].iat[0]: copy})
+            # adding the key value pair to a dictionary
+            self.dummy_List.clear()
+            # clearing the dummy list
+
+    def bool_Representation(self,dicti, rows, cols):
+        '''In this fuction we get a boolean representation of the terms present in the
+        documents in the form of lists, later we create a dictionary which contains
+        the the name of the documents as key and value as the list of boolean values
+        representing the terms present in the document'''
+    
+        self.terms.sort()
+        # we sort the elements in the alphabetical order for the convience, the order
+        # of the term does not make any difference
+    
+        for i in (dicti):
+            # for every document in the dictionary we check for each string present in
+            # the list
+    
+            for j in self.terms:
+                # if the string is present in the list we append 1 else we append 0
+    
+                if j in dicti[i]:
+                    self.dummy_List.append(1)
+                else:
+                    self.dummy_List.append(0)
+                # appending 1 or 0 for obtaining the boolean representation
+    
+            copy = self.dummy_List.copy()
+            # copying the the dummy list to a different list
+    
+            self.vec_Dic.update({i: copy})
+            # adding the key value pair to a dictionary
+    
+            self.dummy_List.clear()
+            # clearing the dummy list
+
+    def query_Vector(self,query):
+        '''In this function we represent the query in the form of boolean vector'''
+    
+        qvect = []
+        # query vector which is returned at the end of the function
+    
+        for i in self.terms:
+            # if the word present in the list of terms is also present in the query
+            # then append 1 else append 0
+    
+            if i in query:
+                qvect.append(1)
+            else:
+                qvect.append(0)
+    
+        return qvect
+        # return the query vector which is obtained in the boolean form
+
+    def prediction(self,q_Vect):
+        '''In this function we make the prediction regarding which document is related
+        to the given query by performing the boolean operations'''
+    
+        dictionary = {}
+        listi = []
+        count = 0
+        # initialisation of the dictionary , list and a variable which is further
+        # required for performing the compuation
+    
+        term_Len = len(self.terms)
+        # number of terms present in the term list
+    
+        for i in self.vec_Dic:
+            # for every document in the dictionary containing the terms present in it
+            # the form of boolean vector
+    
+            for t in range(term_Len):
+                if(q_Vect[t] == self.vec_Dic[i][t]):
+                    # if the words present in the query is also present in the
+                    # document or if the words present in the query is also absent in
+                    # the document
+    
+                    count += 1
+                    # increase the value of count variable by one
+                    # the condition in which words present in document and absent in
+                    #query , present in query and absent in document is not considered
+    
+            dictionary.update({i: count})
+            # dictionary updation here the name of the document is the key and the
+            # count variable computed earlier is the value
+    
+            count = 0
+            # reinitialisaion of count variable to 0
+    
+        for i in dictionary:
+            listi.append(dictionary[i])
+            # here we append the count value to list
+    
+        listi = sorted(listi, reverse=True)
+        # we sort the list in the descending order which is needed to rank the
+        #documents according to the relevance
+    
+        ans = ' '
+        # variable to store the name of the document which is most relevant
+    
+        with open('output.txt', 'w') as f:
+            with redirect_stdout(f):
+                # to redirect the output to a text file
+    
+                print("ranking of the documents")
+    
+                for count, i in enumerate(listi):
+                    key = self.check(dictionary, i)
+                    # Function call to get the key when the value is known
+                    if count == 0:
+                        ans = key
+                        # to store the name of the document which is most relevant
+    
+                    print(key, "rank is", count+1)
+                    # print the name of the document along with its rank
+    
+                    dictionary.pop(key)
+                    # remove the key from the dictionary after printing
+    
+                print(ans, "is the most relevant document for the given query")
+                # to print the name of the document which is most relevant
+    
+    
+    def check(self,dictionary, val):
+        '''Function to return the key when the value is known'''
+    
+        for key, value in dictionary.items():
+            if(val == value):
+                # if the given value is same as the value present in the dictionary
+                # return the key
+    
+                return key
+
+    def booleanModel(self):
+        self.kata = self.textEdit.toPlainText().lower()
+        print(self.kata)
+        # ====== Boolean Model =======
+        # https://www.geeksforgeeks.org/document-retrieval-using-boolean-model-and-vector-space-model/
+        self.terms = []
+        self.keys = []
+        self.vec_Dic = []
+        self.dicti = []
+        self.dummy_List = []
+
+        rows = len(self.savefile)
+        cols = len(self.stemming_word)
+
+        documents = pd.read_csv(self.savefile[0])
+        
+
+        self.filter(documents, rows, cols)
+        # function call to read and separate the name of the documents and the terms
+        # present in it to a separate list  from the data frame and also create a
+        # dictionary which has the name of the document as key and the terms present in
+        # it as the list of strings  which is the value of the key
+    
+        self.bool_representation(self.dicti, rows, cols)
+        # In this fuction we get a boolean representation of the terms present in the
+        # documents in the form of lists, later we create a dictionary which contains
+        # the the name of the documents as key and value as the list of boolean values
+        #representing the terms present in the document
+    
+        print("Enter query")
+        query = self.kata
+        # to get the query input from the user, the below input is given for obtaining
+        # the output as in output.txt file
+        # hockey is a national sport
+    
+        query = query.split(' ')
+        # spliting the query as a list of strings
+    
+        q_Vect = self.query_Vector(query)
+        # function call to represent the query in the form of boolean vector
+    
+        self.prediction(q_Vect)
+        # Function call to make the prediction regarding which document is related to
+        # the given query by performing the boolean operations
+
 
 if __name__ == "__main__":
     import sys
